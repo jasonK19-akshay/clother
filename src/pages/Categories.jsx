@@ -2,7 +2,6 @@ import { useState } from 'react'
 import ConfirmDialog from '../components/ConfirmDialog'
 import { useWardrobe } from '../hooks/useWardrobe'
 import { createCategory, deleteCategory, updateCategory } from '../services/categoryService'
-import { saveStoredClothes } from '../services/storageService'
 
 export default function Categories() {
   const { clothes, categories, refresh } = useWardrobe()
@@ -16,18 +15,32 @@ export default function Categories() {
     return totals
   }, {})
 
-  const submit = (event) => {
-    event.preventDefault()
-    if (!form.name.trim()) {
-      setError('Category name is required.')
-      return
-    }
-    if (editingId) updateCategory(editingId, form)
-    else createCategory(form)
-    setForm({ name: '', description: '' })
-    setEditingId('')
-    setError('')
-    refresh()
+  const submit = async (event) => {
+    try {
+  if (editingId) {
+    await updateCategory(
+      editingId,
+      form,
+    )
+  } else {
+    await createCategory(form)
+  }
+
+  setForm({
+    name: '',
+    description: '',
+  })
+
+  setEditingId('')
+  setError('')
+
+  await refresh()
+} catch (error) {
+  setError(
+    error.message ||
+      'Unable to save category.',
+  )
+}
   }
 
   const startEdit = (category) => {
@@ -35,12 +48,20 @@ export default function Categories() {
     setForm({ name: category.name, description: category.description || '' })
   }
 
-  const remove = () => {
-    deleteCategory(deleteId)
-    saveStoredClothes(clothes.map((item) => (item.categoryId === deleteId ? { ...item, categoryId: '' } : item)))
+  const remove = async () => {
+  try {
+    await deleteCategory(deleteId)
+
     setDeleteId('')
-    refresh()
+
+    await refresh()
+  } catch (error) {
+    setError(
+      error.message ||
+        'Unable to delete category.',
+    )
   }
+}
 
   return (
     <div className="page">

@@ -1,33 +1,126 @@
-import { getStoredCategories, saveStoredCategories } from './storageService'
-import { createId } from '../utils/formatters'
+import { supabase } from '../lib/supabaseClient'
+import { DEFAULT_CATEGORIES } from '../utils/constants'
 
-export function listCategories() {
-  return getStoredCategories()
-}
+async function getCurrentUser() {
+  const {
+    data: { user },
+    error,
+  } = await supabase.auth.getUser()
 
-export function createCategory(input) {
-  const now = new Date().toISOString()
-  const category = {
-    id: createId('cat'),
-    name: input.name.trim(),
-    description: input.description?.trim() || '',
-    createdAt: now,
+  if (error) throw error
+
+  if (!user) {
+    throw new Error('You must be logged in.')
   }
-  saveStoredCategories([...getStoredCategories(), category])
-  return category
+
+  return user
 }
 
-export function updateCategory(id, input) {
-  const categories = getStoredCategories().map((category) =>
-    category.id === id
-      ? { ...category, name: input.name.trim(), description: input.description?.trim() || '' }
-      : category,
+function mapCategory(row) {
+  return {
+    id: row.id,
+    name: row.name,
+    description: row.description || '',
+    createdAt: row.created_at,
+  }
+}
+
+async function ensureDefaultCategories() {
+  const user = await getCurrentUser()
+
+  const { data: existing, error } = await supabase
+    .from('categories')
+    .select('name')
+    .eq('user_id', user.id)
+
+  if (error) throw error
+
+  const existingNames = new Set(
+    (existing || []).map((category) =>
+      category.name.toLowerCase(),
+    ),
   )
-  saveStoredCategories(categories)
-  return categories.find((category) => category.id === id)
+
+  const missing = DEFAULT_CATEGORIES.filter(
+    (name) => !existingNames.has(name.toLowerCase()),
+  )
+
+  if (!missing.length) return
+
+  const rows = missing.map((name) => ({
+    user_id: user.id,
+    name,
+    description: '',
+  }))
+
+  const { error: insertError } = await supabase
+    .from('categories')
+    .insert(rows)
+
+  if (insertError) throw insertError
 }
 
-export function deleteCategory(id) {
-  const categories = getStoredCategories().filter((category) => category.id !== id)
-  saveStoredCategories(categories)
+export async function listCategories() {
+  const user = await getCurrentUser()
+
+  await ensureDefaultCategories()
+
+  const { data, error } = await supabase
+    .from('categories')
+    .select('*')
+    .eq('user_id', user.id)
+    .order('name', { ascending: true })
+
+  if (error) throw error
+
+  return (data || []).map(mapCategory)
+}
+
+export async function createCategory(input) {
+  const user = await getCurrentUser()
+
+  const { data, error } = await supabase
+    .from('categories')
+    .insert({
+      user_id: user.id,
+      name: input.name.trim(),
+      description: input.description?.trim() || '',
+    })
+    .select()
+    .single()
+
+  if (error) throw error
+
+  return mapCategory(data)
+}
+
+export async function updateCategory(id, input) {
+  const user = await getCurrentUser()
+
+  const { data, error } = await supabase
+    .from('categories')
+    .update({
+      name: input.name.trim(),
+      description: input.description?.trim() || '',
+    })
+    .eq('id', id)
+    .eq('user_id', user.id)
+    .select()
+    .single()
+
+  if (error) throw error
+
+  return mapCategory(data)
+}
+
+export async function deleteCategory(id) {
+  const user = await getCurrentUser()
+
+  const { error } = await supabase
+    .from('categories')
+    .delete()
+    .eq('id', id)
+    .eq('user_id', user.id)
+
+  if (error) throw error
 }

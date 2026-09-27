@@ -22,10 +22,21 @@ export default function ClothingDetails() {
 
   if (!item) return <EmptyState title="This clothing item could not be found." actionLabel="Back to Wardrobe" actionTo="/wardrobe" />
 
-  const toggleFavorite = () => {
-    setFavorite(item.id, !item.favorite)
-    refresh()
+  const toggleFavorite = async () => {
+  try {
+    await setFavorite(
+      item.id,
+      !item.favorite,
+    )
+
+    await refresh()
+  } catch (error) {
+    console.error(
+      'Unable to update favorite:',
+      error,
+    )
   }
+}
 
   const remove = async () => {
     await deleteClothing(item.id)

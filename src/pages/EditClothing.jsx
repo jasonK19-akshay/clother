@@ -13,10 +13,16 @@ export default function EditClothing() {
   if (!item) return <EmptyState title="This clothing item could not be found." actionLabel="Back to Wardrobe" actionTo="/wardrobe" />
 
   const submit = async (values, imageDataUrl) => {
-    await updateClothing(id, values, imageDataUrl)
-    refresh()
-    navigate(`/wardrobe/${id}`)
-  }
+  await updateClothing(
+    id,
+    values,
+    imageDataUrl,
+  )
+
+  await refresh()
+
+  navigate(`/wardrobe/${id}`)
+}
 
   return (
     <div className="page narrow">

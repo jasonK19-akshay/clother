@@ -1,27 +1,70 @@
-import { createContext, createElement, useCallback, useContext, useMemo, useState } from 'react'
+import {
+  createContext,
+  createElement,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react'
+
 import { listCategories } from '../services/categoryService'
 import { listClothes } from '../services/clothesService'
-import { ensureInitialData } from '../services/storageService'
 
 const WardrobeContext = createContext(null)
 
 export function WardrobeProvider({ children }) {
-  ensureInitialData()
-  const [clothes, setClothes] = useState(() => listClothes())
-  const [categories, setCategories] = useState(() => listCategories())
+  const [clothes, setClothes] = useState([])
+  const [categories, setCategories] = useState([])
+  const [loading, setLoading] = useState(true)
 
-  const refresh = useCallback(() => {
-    ensureInitialData()
-    setClothes(listClothes())
-    setCategories(listCategories())
+  const refresh = useCallback(async () => {
+    try {
+      setLoading(true)
+
+      const [clothingData, categoryData] = await Promise.all([
+        listClothes(),
+        listCategories(),
+      ])
+
+      setClothes(clothingData)
+      setCategories(categoryData)
+    } catch (error) {
+      console.error('Unable to load wardrobe:', error)
+    } finally {
+      setLoading(false)
+    }
   }, [])
 
-  const value = useMemo(() => ({ clothes, categories, refresh }), [clothes, categories, refresh])
-  return createElement(WardrobeContext.Provider, { value }, children)
+  useEffect(() => {
+    refresh()
+  }, [refresh])
+
+  const value = useMemo(
+    () => ({
+      clothes,
+      categories,
+      loading,
+      refresh,
+    }),
+    [clothes, categories, loading, refresh],
+  )
+
+  return createElement(
+    WardrobeContext.Provider,
+    { value },
+    children,
+  )
 }
 
 export function useWardrobe() {
   const context = useContext(WardrobeContext)
-  if (!context) throw new Error('useWardrobe must be used inside WardrobeProvider.')
+
+  if (!context) {
+    throw new Error(
+      'useWardrobe must be used inside WardrobeProvider.',
+    )
+  }
+
   return context
 }

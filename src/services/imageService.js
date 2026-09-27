@@ -1,70 +1,207 @@
-const DB_NAME = 'clother-images'
-const STORE_NAME = 'images'
-const DB_VERSION = 1
+import { supabase } from '../lib/supabaseClient'
 
-function openDatabase() {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, DB_VERSION)
-    request.onupgradeneeded = () => {
-      request.result.createObjectStore(STORE_NAME)
-    }
-    request.onsuccess = () => resolve(request.result)
-    request.onerror = () => reject(request.error)
+const BUCKET_NAME = 'clothing-images'
+
+function dataUrlToBlob(dataUrl) {
+  const [header, base64] =
+    dataUrl.split(',')
+
+  const match = header.match(
+    /data:(.*?);base64/,
+  )
+
+  if (!match) {
+    throw new Error(
+      'Invalid image data.',
+    )
+  }
+
+  const mimeType = match[1]
+
+  const binary = atob(base64)
+
+  const bytes = new Uint8Array(
+    binary.length,
+  )
+
+  for (
+    let index = 0;
+    index < binary.length;
+    index += 1
+  ) {
+    bytes[index] =
+      binary.charCodeAt(index)
+  }
+
+  return new Blob([bytes], {
+    type: mimeType,
   })
 }
 
-async function transact(mode, action) {
-  const db = await openDatabase()
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction(STORE_NAME, mode)
-    const store = transaction.objectStore(STORE_NAME)
-    const request = action(store)
-    request.onsuccess = () => resolve(request.result)
-    request.onerror = () => reject(request.error)
-    transaction.oncomplete = () => db.close()
-    transaction.onerror = () => {
-      db.close()
-      reject(transaction.error)
-    }
-  })
+export async function saveImage(
+  userId,
+  clothingId,
+  dataUrl,
+) {
+  const blob =
+    dataUrlToBlob(dataUrl)
+
+  const path =
+    `${userId}/${clothingId}.webp`
+
+  const {
+    error,
+  } = await supabase.storage
+    .from(BUCKET_NAME)
+    .upload(
+      path,
+      blob,
+      {
+        contentType: blob.type,
+        upsert: true,
+      },
+    )
+
+  if (error) throw error
+
+  return path
 }
 
-export async function saveImage(id, dataUrl) {
-  await transact('readwrite', (store) => store.put(dataUrl, id))
+export async function getImage(
+  path,
+) {
+  if (!path) return ''
+
+  const {
+    data,
+    error,
+  } = await supabase.storage
+    .from(BUCKET_NAME)
+    .createSignedUrl(
+      path,
+      60 * 60,
+    )
+
+  if (error) {
+    console.error(
+      'Unable to create image URL:',
+      error,
+    )
+
+    return ''
+  }
+
+  return data?.signedUrl || ''
 }
 
-export async function getImage(id) {
-  if (!id) return ''
-  return transact('readonly', (store) => store.get(id))
-}
+export async function deleteImage(
+  path,
+) {
+  if (!path) return
 
-export async function deleteImage(id) {
-  if (!id) return
-  await transact('readwrite', (store) => store.delete(id))
+  const {
+    error,
+  } = await supabase.storage
+    .from(BUCKET_NAME)
+    .remove([path])
+
+  if (error) throw error
 }
 
 export async function clearImages() {
-  await transact('readwrite', (store) => store.clear())
+  // Cloud images are deleted individually.
+  // Kept for compatibility with older code.
 }
 
-export function fileToCompressedDataUrl(file, maxSize = 1200, quality = 0.82) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => {
-      const img = new Image()
-      img.onload = () => {
-        const ratio = Math.min(1, maxSize / Math.max(img.width, img.height))
-        const canvas = document.createElement('canvas')
-        canvas.width = Math.round(img.width * ratio)
-        canvas.height = Math.round(img.height * ratio)
-        const context = canvas.getContext('2d')
-        context.drawImage(img, 0, 0, canvas.width, canvas.height)
-        resolve(canvas.toDataURL('image/webp', quality))
+export function fileToCompressedDataUrl(
+  file,
+  maxSize = 1200,
+  quality = 0.82,
+) {
+  return new Promise(
+    (resolve, reject) => {
+      const reader =
+        new FileReader()
+
+      reader.onload = () => {
+        const img = new Image()
+
+        img.onload = () => {
+          const ratio = Math.min(
+            1,
+            maxSize /
+              Math.max(
+                img.width,
+                img.height,
+              ),
+          )
+
+          const canvas =
+            document.createElement(
+              'canvas',
+            )
+
+          canvas.width =
+            Math.round(
+              img.width * ratio,
+            )
+
+          canvas.height =
+            Math.round(
+              img.height * ratio,
+            )
+
+          const context =
+            canvas.getContext(
+              '2d',
+            )
+
+          if (!context) {
+            reject(
+              new Error(
+                'Could not process image.',
+              ),
+            )
+            return
+          }
+
+          context.drawImage(
+            img,
+            0,
+            0,
+            canvas.width,
+            canvas.height,
+          )
+
+          resolve(
+            canvas.toDataURL(
+              'image/webp',
+              quality,
+            ),
+          )
+        }
+
+        img.onerror = () => {
+          reject(
+            new Error(
+              'Could not read image.',
+            ),
+          )
+        }
+
+        img.src =
+          reader.result
       }
-      img.onerror = () => reject(new Error('Could not read image.'))
-      img.src = reader.result
-    }
-    reader.onerror = () => reject(new Error('Could not load image file.'))
-    reader.readAsDataURL(file)
-  })
+
+      reader.onerror = () => {
+        reject(
+          new Error(
+            'Could not load image file.',
+          ),
+        )
+      }
+
+      reader.readAsDataURL(file)
+    },
+  )
 }

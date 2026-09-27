@@ -1,6 +1,7 @@
 import { NavLink, Outlet } from 'react-router-dom'
 import { useState } from 'react'
 import { useTheme } from '../hooks/useTheme'
+import { signOut } from '../services/authService'
 
 const links = [
   ['/', 'Dashboard'],
@@ -43,6 +44,13 @@ export default function Layout() {
           ))}
         </nav>
         <button type="button" className="theme-toggle" onClick={toggleTheme}>
+        <button
+  type="button"
+  className="theme-toggle"
+  onClick={signOut}
+>
+  Logout
+</button>
           {theme === 'dark' ? 'Light mode' : 'Dark mode'}
         </button>
       </aside>

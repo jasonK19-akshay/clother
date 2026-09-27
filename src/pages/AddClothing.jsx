@@ -9,7 +9,7 @@ export default function AddClothing() {
 
   const submit = async (values, imageDataUrl) => {
     const item = await createClothing(values, imageDataUrl)
-    refresh()
+    await refresh()
     navigate(`/wardrobe/${item.id}`)
   }
 
